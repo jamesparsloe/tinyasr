@@ -1,0 +1,3 @@
+train:
+  batch_size: 16
+  checkpoint_every: 100
