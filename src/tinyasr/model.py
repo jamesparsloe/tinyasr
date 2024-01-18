@@ -247,8 +247,11 @@ class TinyASR(nn.Module):
                 v, _ = torch.topk(logits, top_k)
                 logits[logits < v[:, [-1]]] = -float("inf")
 
+            logits = logits.squeeze(1)
+            logits[:, self.config.pad_token_id] = -float("inf")
+            logits[:, self.config.bos_token_id] = -float("inf")
+
             probs = F.softmax(logits / temperature, dim=-1)
-            probs = probs.squeeze(1)
 
             token = torch.multinomial(probs, num_samples=1)
             tokens = torch.cat((tokens, token), dim=1)

@@ -16,10 +16,10 @@ class TrainConfig(BaseModel):
     max_norm: float = 1.0
     betas: tuple[float, float] = (0.9, 0.95)
 
-    val_every: int = 1_000
+    val_every: int = 5_000
     val_items: int = 100
 
-    checkpoint_every: int = 1_000
+    checkpoint_every: int = 5_000
     log_every: int = 10
 
     num_workers: int = 4

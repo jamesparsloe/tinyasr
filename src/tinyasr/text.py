@@ -37,11 +37,14 @@ def detokenize(
     texts = []
     for token_ids in batch:
         token_ids = token_ids[token_ids != pad_token_id]
-        token_ids = token_ids[token_ids != eos_token_id]
         token_ids = token_ids[token_ids != bos_token_id]
-        token_ids = token_ids - n_special_tokens
 
-        texts.append("".join(chr(token_id) for token_id in token_ids))
+        eos_mask = (token_ids == eos_token_id).float()
+        before_eos_mask = eos_mask.cumsum(dim=-1) == 0
+        length = before_eos_mask.sum(dim=-1).item()
+
+        token_ids = token_ids - n_special_tokens
+        texts.append("".join(chr(token_id) for token_id in token_ids[:length]))
 
     return texts
 
