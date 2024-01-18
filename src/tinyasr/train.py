@@ -41,6 +41,9 @@ def collate(
     sample_rate: int = 16_000,
     audio_pad_or_truncate: float = 15.0,
     text_pad_or_truncate: int = 128,
+    pad_token_id: int = 0,
+    bos_token_id: int = 1,
+    eos_token_id: int = 2,
 ):
     texts = []
     waveforms = []
@@ -59,7 +62,13 @@ def collate(
         texts.append(item["sentence"])
 
     waveforms = pad_sequence(waveforms, batch_first=True)
-    token_ids = tokenize(texts, pad_or_truncate=text_pad_or_truncate)
+    token_ids = tokenize(
+        texts,
+        pad_token_id=pad_token_id,
+        bos_token_id=bos_token_id,
+        eos_token_id=eos_token_id,
+        pad_or_truncate=text_pad_or_truncate,
+    )
 
     return {
         "waveforms": waveforms,
@@ -127,6 +136,9 @@ def main(config_path: str):
         sample_rate=model_config.sample_rate,
         audio_pad_or_truncate=model_config.max_duration,
         text_pad_or_truncate=model_config.max_text_len,
+        pad_token_id=model_config.pad_token_id,
+        bos_token_id=model_config.bos_token_id,
+        eos_token_id=model_config.eos_token_id,
     )
 
     train_dl = DataLoader(

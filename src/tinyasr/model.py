@@ -19,9 +19,10 @@ class TinyASRConfig(BaseModel):
 
     # text
     max_text_len: int = 128
-    eos_token_id: int = 0
+    pad_token_id: int = 0
     bos_token_id: int = 1
-    n_tokens: int = 1 + 1 + 256
+    eos_token_id: int = 2
+    n_tokens: int = 1 + 1 + 1 + 256
 
     # decoder
     n_layers: int = 6
@@ -190,7 +191,11 @@ class TinyASR(nn.Module):
 
         logits = self.lm_head(x[:, prefix_len:])
 
-        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_ids.view(-1))
+        loss = F.cross_entropy(
+            logits.view(-1, logits.size(-1)),
+            target_ids.view(-1),
+            ignore_index=self.config.pad_token_id,
+        )
 
         return {"loss": loss}
 
@@ -215,7 +220,10 @@ class TinyASR(nn.Module):
 
     @torch.inference_mode()
     def generate(
-        self, mels: Tensor, temperature: float = 1.0, top_k: int | None = None
+        self,
+        mels: Tensor,
+        temperature: float = 1.0,
+        top_k: int | None = None,
     ):
         if top_k is not None:
             assert top_k > 0
