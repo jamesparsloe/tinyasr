@@ -4,13 +4,21 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 
 
-def tokenize(texts: list[str], bos_token_id: int = 0, eos_token_id: int = 1):
+def tokenize(
+    texts: list[str],
+    bos_token_id: int = 0,
+    eos_token_id: int = 1,
+    pad_or_truncate: int = 128,
+):
     n_special_tokens = 2
     batch = []
     for text in texts:
         token_ids = torch.tensor(list(text.encode("utf-8"))) + n_special_tokens
+        token_ids = token_ids[: pad_or_truncate - n_special_tokens]
         token_ids = F.pad(token_ids, (1, 0), value=bos_token_id)
         token_ids = F.pad(token_ids, (0, 1), value=eos_token_id)
+        pad = pad_or_truncate - token_ids.size(-1)
+        token_ids = F.pad(token_ids, (0, pad), value=eos_token_id)
         batch.append(token_ids)
 
     batch = pad_sequence(batch, batch_first=True, padding_value=eos_token_id)

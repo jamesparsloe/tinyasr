@@ -14,7 +14,9 @@ requires-python = ">=3.10"
 dependencies = [
     "click",
     "einops",
+    "matplotlib",
     "numpy",
+    "pandas",
     "pydantic",
     "torch",
     "torchaudio",

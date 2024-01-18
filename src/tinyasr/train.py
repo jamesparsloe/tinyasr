@@ -1,18 +1,22 @@
 import math
 import os
 import time
+from contextlib import nullcontext
+from functools import partial
 from itertools import islice
 
 import click
 import torch
+import torch.nn.functional as F
 import torchaudio
-import wandb
 import yaml
 from datasets import load_dataset
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from functools import partial
+
+import wandb
+
 from .config import Config
 from .model import TinyASR, TinyASRConfig
 from .text import detokenize, tokenize
@@ -21,16 +25,41 @@ CACHE_DIR = os.path.expanduser("~/.cache/torchaudio")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 
-def collate(batch):
+# running python stats.py
+#            duration      text_len
+# count  10000.000000  10000.000000
+# mean       6.183848     60.638800
+# std        1.680673     19.436731
+# min        1.344000      4.000000
+# 25%        4.968000     47.000000
+# 50%        6.096000     61.000000
+# 75%        7.308000     75.000000
+# max       13.104000    124.000000
+def collate(
+    batch,
+    *,
+    sample_rate: int = 16_000,
+    audio_pad_or_truncate: float = 15.0,
+    text_pad_or_truncate: int = 128,
+):
     texts = []
     waveforms = []
 
+    audio_len = int(audio_pad_or_truncate * sample_rate)
+
     for item in batch:
-        waveforms.append(torch.from_numpy(item["audio"]["array"]).to(torch.float32))
+        waveform = torch.from_numpy(item["audio"]["array"]).to(torch.float32)
+        original_sample_rate = item["audio"]["sampling_rate"]
+        waveform = torchaudio.functional.resample(
+            waveform, original_sample_rate, sample_rate
+        )
+        pad = audio_len - waveform.size(-1)
+        waveform = F.pad(waveform, (0, pad), value=0.0)
+        waveforms.append(waveform)
         texts.append(item["sentence"])
 
     waveforms = pad_sequence(waveforms, batch_first=True)
-    token_ids = tokenize(texts)
+    token_ids = tokenize(texts, pad_or_truncate=text_pad_or_truncate)
 
     return {
         "waveforms": waveforms,
@@ -62,6 +91,9 @@ def warmup_then_cosine_decay(
 @click.command()
 @click.argument("config_path", type=click.Path(exists=True))
 def main(config_path: str):
+    assert os.getenv("WANDB_API_KEY"), "Please set WANDB_API_KEY"
+    assert os.getenv("HF_TOKEN"), "Please set HF_TOKEN"
+
     name = "tinyasr"
     device = "cuda"
 
@@ -76,8 +108,6 @@ def main(config_path: str):
     run_dir = os.path.join("./runs", run.id)
     os.makedirs(run_dir, exist_ok=True)
 
-    # need to accept the terms and conditions to access the Common Voice dataset
-    # huggingface-cli login
     train_ds = load_dataset(
         "mozilla-foundation/common_voice_16_1",
         "en",
@@ -91,13 +121,21 @@ def main(config_path: str):
         trust_remote_code=True,
     )
 
+    # TODO stream and filter the HF dataset on the fly instead of truncating
+    collate_fn = partial(
+        collate,
+        sample_rate=model_config.sample_rate,
+        audio_pad_or_truncate=model_config.max_duration,
+        text_pad_or_truncate=model_config.max_text_len,
+    )
+
     train_dl = DataLoader(
         train_ds,
         shuffle=True,
         batch_size=train_config.batch_size,
         num_workers=train_config.num_workers,
         drop_last=True,
-        collate_fn=collate,
+        collate_fn=collate_fn,
     )
 
     val_dl = DataLoader(
@@ -106,7 +144,7 @@ def main(config_path: str):
         batch_size=train_config.batch_size,
         num_workers=train_config.num_workers,
         drop_last=True,
-        collate_fn=collate,
+        collate_fn=collate_fn,
     )
 
     model = TinyASR(model_config).to(device)
@@ -122,6 +160,7 @@ def main(config_path: str):
     )
 
     if train_config.compile:
+        print(f"Compiling model...")
         model = torch.compile(model)
 
     mel_transform = torchaudio.transforms.MelSpectrogram().to(device)
@@ -140,8 +179,16 @@ def main(config_path: str):
         max_lr=train_config.lr,
     )
 
+    amp_dtype = (
+        torch.bfloat16 if model_config.amp_dtype == "bfloat16" else torch.float32
+    )
+    ctx = (
+        nullcontext()
+        if amp_dtype == torch.bfloat16
+        else torch.amp.autocast(device_type="cuda", dtype=amp_dtype)
+    )
+
     while step < train_config.steps:
-        
         lr = get_lr(step)
 
         for param_group in optimizer.param_groups:
@@ -152,9 +199,13 @@ def main(config_path: str):
 
             waveforms = batch["waveforms"].to(device, non_blocking=True)
             token_ids = batch["token_ids"].to(device, non_blocking=True)
+
+            print(f"{waveforms.shape=} {token_ids.shape=}")
+
             mels = mel_transform(waveforms)
 
-            out = model(mels, token_ids)
+            with ctx:
+                out = model(mels, token_ids)
 
             loss = out["loss"] / train_config.gradient_accumulation_steps
             loss.backward()
@@ -200,7 +251,9 @@ def main(config_path: str):
                 token_ids = batch["token_ids"].to(device, non_blocking=True)
                 mels = mel_transform(waveforms)
 
-                generated_token_ids = model.generate(mels)
+                with ctx:
+                    generated_token_ids = model.generate(mels)
+
                 generated_texts = detokenize(generated_token_ids)
 
                 for text, generated_text in zip(texts, generated_texts):

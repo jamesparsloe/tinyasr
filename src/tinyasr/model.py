@@ -14,11 +14,11 @@ from torch.optim import AdamW
 class TinyASRConfig(BaseModel):
     # audio
     sample_rate: int = 16_000
-    max_duration: float = 30.0
+    max_duration: float = 15.0
     n_mels: int = 128
 
     # text
-    max_text_len: int = 512
+    max_text_len: int = 128
     eos_token_id: int = 0
     bos_token_id: int = 1
     n_tokens: int = 1 + 1 + 256
@@ -29,6 +29,8 @@ class TinyASRConfig(BaseModel):
     n_heads: int = 8
     bias: bool = False
     dropout: float = 0.0
+
+    amp_dtype: str = "bfloat16"
 
 
 class MHA(nn.Module):
@@ -93,6 +95,7 @@ class RotaryEmbedding(nn.Module):
     def device(self):
         return self.inv_freq.device
 
+    @torch.cuda.amp.autocast(enabled=False)
     def forward(self, t: Tensor):
         t = t.type_as(self.inv_freq)
         freqs = torch.einsum("i , j -> i j", t, self.inv_freq)
@@ -105,6 +108,7 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
+@torch.cuda.amp.autocast(enabled=False)
 def apply_rotary_pos_emb(pos, t):
     return t * pos.cos() + rotate_half(t) * pos.sin()
 
