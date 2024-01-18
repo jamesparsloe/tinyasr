@@ -29,3 +29,4 @@ I'll be logging my experiments [here](<https://wandb.ai/jamesparsloe/tinyasr>).
 - [ ] Audio normalization? Whisper does some normalization based on dataset stats etc
 - [ ] Positional encoding - currently uses RoPE across the entire embedded sequence of mels + text, should we have separate ones more like encoder-decoder?
 - [ ] Masking approach - currently a causal mask is applied across the entire embedded sequence, is something like a prefix mask _substantially_ better?
+- [ ] Classifier Free Guidance - seems to be everywhere now in language models - any reason it wouldn't help here?
