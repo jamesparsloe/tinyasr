@@ -17,7 +17,7 @@ class TrainConfig(BaseModel):
     betas: tuple[float, float] = (0.9, 0.95)
 
     val_every: int = 5_000
-    val_items: int = 100
+    val_items: int = 128
 
     checkpoint_every: int = 5_000
     log_every: int = 10
