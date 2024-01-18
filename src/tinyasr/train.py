@@ -183,9 +183,9 @@ def main(config_path: str):
         torch.bfloat16 if model_config.amp_dtype == "bfloat16" else torch.float32
     )
     ctx = (
-        nullcontext()
+        torch.amp.autocast(device_type="cuda", dtype=amp_dtype)
         if amp_dtype == torch.bfloat16
-        else torch.amp.autocast(device_type="cuda", dtype=amp_dtype)
+        else nullcontext()
     )
 
     while step < train_config.steps:
