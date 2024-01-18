@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +9,6 @@ from pydantic import BaseModel
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
-import math
 
 
 class TinyASRConfig(BaseModel):
@@ -244,7 +245,7 @@ class TinyASR(nn.Module):
 
 
 if __name__ == "__main__":
-    from .text import tokenize, detokenize
+    from .text import detokenize, tokenize
 
     device = "cuda"
 

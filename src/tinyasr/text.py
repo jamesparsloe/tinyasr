@@ -1,7 +1,7 @@
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
-import torch.nn.functional as F
 
 
 def tokenize(texts: list[str], bos_token_id: int = 0, eos_token_id: int = 1):

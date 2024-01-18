@@ -1,21 +1,21 @@
+import math
 import os
+import time
 from itertools import islice
 
 import click
 import torch
 import torchaudio
+import wandb
 import yaml
 from datasets import load_dataset
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torchaudio.datasets import LIBRISPEECH
-from .text import tokenize, detokenize
-import time
-import wandb
-
+from functools import partial
 from .config import Config
 from .model import TinyASR, TinyASRConfig
+from .text import detokenize, tokenize
 
 CACHE_DIR = os.path.expanduser("~/.cache/torchaudio")
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -43,6 +43,20 @@ def cycle(iterable):
     while True:
         for item in iterable:
             yield item
+
+
+def warmup_then_cosine_decay(
+    step: int, *, warmup_steps: int, steps: int, min_lr: float, max_lr: float
+):
+    if step < warmup_steps:
+        return min_lr + step * (max_lr - min_lr) / (warmup_steps)
+    elif step > steps:
+        return min_lr
+    else:
+        decay_ratio = (step - warmup_steps) / (steps - warmup_steps)
+        assert 0 <= decay_ratio <= 1
+        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+        return min_lr + coeff * (max_lr - min_lr)
 
 
 @click.command()
@@ -118,7 +132,21 @@ def main(config_path: str):
 
     t1 = time.perf_counter()
 
+    get_lr = partial(
+        warmup_then_cosine_decay,
+        warmup_steps=train_config.warmup_steps,
+        steps=train_config.steps,
+        min_lr=train_config.min_lr,
+        max_lr=train_config.lr,
+    )
+
     while step < train_config.steps:
+        
+        lr = get_lr(step)
+
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
+
         for micro_step in range(train_config.gradient_accumulation_steps):
             batch = next(train_dl)
 
@@ -154,6 +182,7 @@ def main(config_path: str):
                     * train_config.gradient_accumulation_steps,
                     "train/grad_norm": grad_norm.item(),
                     "train/throughput": throughput,
+                    "train/lr": lr,
                 },
                 step=step,
             )
