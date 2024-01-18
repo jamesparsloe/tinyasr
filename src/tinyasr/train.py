@@ -200,8 +200,6 @@ def main(config_path: str):
             waveforms = batch["waveforms"].to(device, non_blocking=True)
             token_ids = batch["token_ids"].to(device, non_blocking=True)
 
-            print(f"{waveforms.shape=} {token_ids.shape=}")
-
             mels = mel_transform(waveforms)
 
             with ctx:
