@@ -9,7 +9,7 @@ from contextlib import nullcontext
 device = "cuda"
 
 
-checkpoint_path = "./runs/exy9fo1v/tinyasr-007000.pt"
+checkpoint_path = "./runs/7srpf3at/tinyasr-100000.pt"
 checkpoint = torch.load(checkpoint_path, map_location="cpu")
 config = TinyASRConfig(**checkpoint["config"])
 model = TinyASR(config)

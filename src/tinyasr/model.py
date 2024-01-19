@@ -33,6 +33,8 @@ class TinyASRConfig(BaseModel):
 
     amp_dtype: str = "bfloat16"
 
+    p_uncond: float = 0.0  # unconditional probability for CFG, 0.10 - 0.20 seems to be a good value
+
 
 class MHA(nn.Module):
     def __init__(self, *, d_model: int, n_heads: int, bias: bool, dropout: float):
@@ -143,6 +145,16 @@ class Decoder(nn.Module):
         return x
 
 
+# lucidrains
+def prob_mask_like(shape, prob: float, device):
+    if prob == 1:
+        return torch.ones(shape, device=device, dtype=torch.bool)
+    elif prob == 0:
+        return torch.zeros(shape, device=device, dtype=torch.bool)
+    else:
+        return torch.zeros(shape, device=device).float().uniform_(0, 1) < prob
+
+
 class TinyASR(nn.Module):
     def __init__(self, config: TinyASRConfig):
         super().__init__()
@@ -167,6 +179,9 @@ class TinyASR(nn.Module):
         )
         self.lm_head = nn.Linear(config.d_model, config.n_tokens)
 
+        if config.p_uncond > 0.0:
+            self.null_cond = nn.Parameter(config.d_model)
+
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -178,10 +193,18 @@ class TinyASR(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, mels: Tensor, token_ids: Tensor):
+        B, C, T = mels.size()
         target_ids = F.pad(token_ids[:, 1:], (0, 1), value=self.config.eos_token_id)
 
         mels = self.encoder(mels)
         prefix_len = mels.size(1)
+
+        # CFG
+        if self.config.p_uncond > 0.0:
+            uncond_mask = rearrange(
+                prob_mask_like((B,), self.config.p_uncond, device), "B -> B 1 1"
+            )
+            mels = torch.where(uncond_mask, self.null_cond, mels)
 
         tokens = self.embedding(token_ids)
 

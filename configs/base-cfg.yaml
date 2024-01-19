@@ -1,0 +1,7 @@
+train:
+  batch_size: 64
+  gradient_accumulation_steps: 1
+  compile: true
+
+model:
+  p_uncond: 0.20
