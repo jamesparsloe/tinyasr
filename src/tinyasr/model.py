@@ -67,7 +67,7 @@ class MHA(nn.Module):
         k = apply_rotary_pos_emb(rotary_emb, k)
 
         out = F.scaled_dot_product_attention(
-            q, k, v, dropout_p=self.dropout if self.training else None, is_causal=True
+            q, k, v, dropout_p=self.dropout if self.training else 0.0, is_causal=True
         )
         out = self.out_proj(rearrange(out, "... h T d -> ... T (h d)"))
 
