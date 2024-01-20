@@ -33,7 +33,11 @@ class TinyASRConfig(BaseModel):
 
     amp_dtype: str = "bfloat16"
 
-    p_uncond: float = 0.0  # unconditional probability for CFG, 0.10 - 0.20 seems to be a good value
+    p_uncond: float = (
+        0.0  # unconditional probability for CFG, 0.10 - 0.20 seems to be a good value
+    )
+
+    tokenizer: str = "byte-level"  # or tinyasr.model
 
 
 class MHA(nn.Module):

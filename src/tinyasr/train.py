@@ -19,7 +19,7 @@ import wandb
 
 from .config import Config
 from .model import TinyASR, TinyASRConfig
-from .text import detokenize, tokenize
+from .text import ByteLevelTokenizer, SentencePieceTokenizer
 
 CACHE_DIR = os.path.expanduser("~/.cache/torchaudio")
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -38,12 +38,10 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 def collate(
     batch,
     *,
+    tokenizer,
     sample_rate: int = 16_000,
     audio_pad_or_truncate: float = 15.0,
     text_pad_or_truncate: int = 128,
-    pad_token_id: int = 0,
-    bos_token_id: int = 1,
-    eos_token_id: int = 2,
 ):
     texts = []
     waveforms = []
@@ -62,11 +60,8 @@ def collate(
         texts.append(item["sentence"])
 
     waveforms = pad_sequence(waveforms, batch_first=True)
-    token_ids = tokenize(
+    token_ids = tokenizer.encode(
         texts,
-        pad_token_id=pad_token_id,
-        bos_token_id=bos_token_id,
-        eos_token_id=eos_token_id,
         pad_or_truncate=text_pad_or_truncate,
     )
 
@@ -130,15 +125,22 @@ def main(config_path: str):
         trust_remote_code=True,
     )
 
+    if model_config.tokenizer == "byte-level":
+        tokenizer = ByteLevelTokenizer(
+            pad_token_id=model_config.pad_token_id,
+            bos_token_id=model_config.bos_token_id,
+            eos_token_id=model_config.eos_token_id,
+        )
+    else:
+        tokenizer = SentencePieceTokenizer(model_config.tokenizer)
+        model_config.n_tokens = tokenizer._model.vocab_size()
+
     # TODO stream and filter the HF dataset on the fly instead of truncating
     collate_fn = partial(
         collate,
         sample_rate=model_config.sample_rate,
         audio_pad_or_truncate=model_config.max_duration,
         text_pad_or_truncate=model_config.max_text_len,
-        pad_token_id=model_config.pad_token_id,
-        bos_token_id=model_config.bos_token_id,
-        eos_token_id=model_config.eos_token_id,
     )
 
     train_dl = DataLoader(
@@ -264,7 +266,7 @@ def main(config_path: str):
                 with ctx:
                     generated_token_ids = model.generate(mels)
 
-                generated_texts = detokenize(generated_token_ids)
+                generated_texts = tokenizer.decode(generated_token_ids)
 
                 for text, generated_text in zip(texts, generated_texts):
                     data.append([text, generated_text])
