@@ -138,6 +138,7 @@ def main(config_path: str):
     # TODO stream and filter the HF dataset on the fly instead of truncating
     collate_fn = partial(
         collate,
+        tokenizer=tokenizer,
         sample_rate=model_config.sample_rate,
         audio_pad_or_truncate=model_config.max_duration,
         text_pad_or_truncate=model_config.max_text_len,

@@ -19,6 +19,7 @@ dependencies = [
     "numpy",
     "pandas",
     "pydantic",
+    "sentencepiece",
     "torch",
     "torchaudio",
     "wandb",
