@@ -5,3 +5,4 @@ train:
 
 model:
   tokenizer: tinyasr.model
+  dropout: 0.1

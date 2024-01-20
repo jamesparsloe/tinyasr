@@ -46,7 +46,14 @@ class MHA(nn.Module):
         self.n_heads = n_heads
         self.dropout = dropout
         self.Wqkv = nn.Linear(d_model, 3 * d_model, bias=bias)
-        self.out_proj = nn.Linear(d_model, d_model, bias=bias)
+
+        # backwards compatibility I think
+        if dropout > 0.0:
+            self.out_proj = nn.Sequential(
+                nn.Linear(d_model, d_model, bias=bias), nn.Dropout(dropout)
+            )
+        else:
+            self.out_proj = nn.Linear(d_model, d_model, bias=bias)
 
     def forward(self, x: Tensor, rotary_emb: Tensor):
         qkv = self.Wqkv(x)
@@ -60,7 +67,7 @@ class MHA(nn.Module):
         k = apply_rotary_pos_emb(rotary_emb, k)
 
         out = F.scaled_dot_product_attention(
-            q, k, v, dropout_p=self.dropout, is_causal=True
+            q, k, v, dropout_p=self.dropout if self.training else None, is_causal=True
         )
         out = self.out_proj(rearrange(out, "... h T d -> ... T (h d)"))
 

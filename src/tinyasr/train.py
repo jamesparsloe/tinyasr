@@ -275,6 +275,27 @@ def main(config_path: str):
             eval_table = wandb.Table(columns=["target", "prediction"], data=data)
             wandb.log({"eval": eval_table}, step=step)
 
+            val_loss = 0.0
+            val_batches = 0
+
+            with torch.no_grad():
+                for batch in val_dl:
+                    texts = batch["texts"]
+                    waveforms = batch["waveforms"].to(device, non_blocking=True)
+                    token_ids = batch["token_ids"].to(device, non_blocking=True)
+                    mels = mel_transform(waveforms)
+
+                    with ctx:
+                        out = model(mels, token_ids)
+
+                    val_loss = val_loss + out["loss"]
+
+                    val_batches += 1
+
+            val_loss = val_loss / val_batches
+
+            wandb.log({"val/loss": val_loss.item()}, step=step)
+
             model.train()
 
         if step % train_config.checkpoint_every == 0:

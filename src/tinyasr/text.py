@@ -1,8 +1,8 @@
+import sentencepiece as spm
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
-import sentencepiece as spm
 
 
 class ByteLevelTokenizer:
@@ -78,7 +78,9 @@ class SentencePieceTokenizer:
             token_ids = F.pad(token_ids, (0, pad), value=self._model.pad_id())
             batch.append(token_ids)
 
-        batch = pad_sequence(batch, batch_first=True, padding_value=self._model.pad_id())
+        batch = pad_sequence(
+            batch, batch_first=True, padding_value=self._model.pad_id()
+        )
 
         return batch
 
