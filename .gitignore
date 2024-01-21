@@ -163,3 +163,5 @@ wandb/
 runs/
 
 sentences.txt
+
+transformers/

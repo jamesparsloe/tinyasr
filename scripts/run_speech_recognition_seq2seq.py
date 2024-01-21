@@ -20,7 +20,8 @@ Fine-tuning the library models for sequence to sequence speech recognition.
 # recognition task. Pointers for this are left as comments.
 
 # Originally copied from https://github.com/huggingface/transformers/blob/main/examples/pytorch/speech-recognition/run_speech_recognition_seq2seq.py
-# pip install transformers evaluate
+# NOTE have to currently do a source install
+# pip install evaluate
 
 import logging
 import os
@@ -52,7 +53,7 @@ from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.38.0.dev0")
+# check_min_version("4.38.0.dev0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
