@@ -8,3 +8,4 @@ model:
   d_model: 768
   n_heads: 12
   dropout: 0.1
+  tokenizer: tinyasr.model
