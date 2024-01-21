@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 import yaml
-from datasets import load_dataset
+from datasets import load_dataset, interleave_datasets
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
@@ -57,7 +57,9 @@ def collate(
         pad = audio_len - waveform.size(-1)
         waveform = F.pad(waveform, (0, pad), value=0.0)
         waveforms.append(waveform)
-        texts.append(item["sentence"])
+        text = item.get("sentence") or item.get("text")
+        assert text is not None
+        texts.append(text)
 
     waveforms = pad_sequence(waveforms, batch_first=True)
     token_ids = tokenizer.encode(
@@ -112,17 +114,35 @@ def main(config_path: str):
     run_dir = os.path.join("./runs", run.id)
     os.makedirs(run_dir, exist_ok=True)
 
-    train_ds = load_dataset(
-        "mozilla-foundation/common_voice_16_1",
-        "en",
-        split="train",
-        trust_remote_code=True,
-    )
-    val_ds = load_dataset(
-        "mozilla-foundation/common_voice_16_1",
-        "en",
-        split="validation",
-        trust_remote_code=True,
+    if train_config.dataset == "common_voice":
+        train_ds = load_dataset(
+            "mozilla-foundation/common_voice_16_1",
+            "en",
+            split="train",
+            trust_remote_code=True,
+        )
+        val_ds = load_dataset(
+            "mozilla-foundation/common_voice_16_1",
+            "en",
+            split="validation",
+            trust_remote_code=True,
+        )
+    else:
+        train_ds = interleave_datasets(
+            [
+                load_dataset("librispeech_asr", "train", split="clean-100"),
+                load_dataset("librispeech_asr", "train", split="clean-360"),
+                load_dataset("librispeech_asr", "train", split="other-500"),
+            ],
+            stopping_strategy="all_exhausted",
+        )
+
+    val_ds = interleave_datasets(
+        [
+            load_dataset("librispeech_asr", "validation", split="clean"),
+            load_dataset("librispeech_asr", "validation", split="other"),
+        ],
+        stopping_strategy="all_exhausted",
     )
 
     if model_config.tokenizer == "byte-level":

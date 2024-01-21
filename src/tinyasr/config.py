@@ -27,6 +27,8 @@ class TrainConfig(BaseModel):
 
     compile: bool = False
 
+    dataset: str = "common_voice"
+
     @property
     def val_steps(self) -> int:
         # always drop_last in DataLoader

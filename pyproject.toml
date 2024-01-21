@@ -15,6 +15,7 @@ dependencies = [
     "click",
     "einops",
     "gradio",
+    "jiwer",
     "matplotlib",
     "numpy",
     "pandas",

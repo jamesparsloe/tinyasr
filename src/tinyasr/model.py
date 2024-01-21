@@ -195,6 +195,23 @@ class TinyASR(nn.Module):
 
         self.apply(self._init_weights)
 
+    @staticmethod
+    def from_pretrained(path: str):
+        checkpoint = torch.load(path, map_location="cpu")
+        config = TinyASRConfig(**checkpoint["config"]["model"])
+
+        state_dict = {
+            k.replace("_orig_mod.", ""): v for k, v in checkpoint["model"].items()
+        }
+
+        model = TinyASR(config)
+        _ = model.load_state_dict(state_dict)
+
+        step = checkpoint["step"]
+        setattr(model, "step", step)
+
+        return model
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
