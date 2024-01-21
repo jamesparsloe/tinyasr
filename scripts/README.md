@@ -1,0 +1,34 @@
+WANDB_PROJECT=whisper-asr python run_speech_recognition_seq2seq.py \
+	--model_name_or_path="openai/whisper-base" \
+	--dataset_name="mozilla-foundation/common_voice_16_1" \
+	--dataset_config_name="en" \
+	--language="english" \
+	--train_split_name="train" \
+	--eval_split_name="validation" \
+	--max_steps="100000" \
+	--output_dir="./whisper-base-en" \
+	--per_device_train_batch_size="64" \
+	--gradient_accumulation_steps="1" \
+	--per_device_eval_batch_size="64" \
+	--logging_steps="10" \
+	--learning_rate="1e-4" \
+	--warmup_steps="1000" \
+	--evaluation_strategy="steps" \
+	--eval_steps="5000" \
+	--save_strategy="steps" \
+	--save_steps="5000" \
+	--generation_max_length="225" \
+	--preprocessing_num_workers="16" \
+	--length_column_name="input_length" \
+	--max_duration_in_seconds="30" \
+	--text_column_name="sentence" \
+	--freeze_feature_encoder="False" \
+	--gradient_checkpointing \
+	--group_by_length \
+	--fp16 \
+	--overwrite_output_dir \
+	--do_train \
+	--do_eval \
+	--predict_with_generate \
+	--use_auth_token \
+    --report_to="wandb"
