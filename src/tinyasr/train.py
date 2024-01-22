@@ -114,7 +114,7 @@ def main(config_path: str):
     run_dir = os.path.join("./runs", run.id)
     os.makedirs(run_dir, exist_ok=True)
 
-    if train_config.dataset == "common_voice":
+    if train_config.dataset == "librispeech":
         train_ds = load_dataset(
             "mozilla-foundation/common_voice_16_1",
             "en",
@@ -128,6 +128,7 @@ def main(config_path: str):
             trust_remote_code=True,
         )
     else:
+        # BUG work out these split names
         train_ds = interleave_datasets(
             [
                 load_dataset("librispeech_asr", "train", split="clean-100"),
@@ -137,13 +138,13 @@ def main(config_path: str):
             stopping_strategy="all_exhausted",
         )
 
-    val_ds = interleave_datasets(
-        [
-            load_dataset("librispeech_asr", "validation", split="clean"),
-            load_dataset("librispeech_asr", "validation", split="other"),
-        ],
-        stopping_strategy="all_exhausted",
-    )
+        val_ds = interleave_datasets(
+            [
+                load_dataset("librispeech_asr", "validation", split="clean"),
+                load_dataset("librispeech_asr", "validation", split="other"),
+            ],
+            stopping_strategy="all_exhausted",
+        )
 
     if model_config.tokenizer == "byte-level":
         tokenizer = ByteLevelTokenizer(
