@@ -114,7 +114,7 @@ def main(config_path: str):
     run_dir = os.path.join("./runs", run.id)
     os.makedirs(run_dir, exist_ok=True)
 
-    if train_config.dataset == "librispeech":
+    if train_config.dataset == "common_voice":
         train_ds = load_dataset(
             "mozilla-foundation/common_voice_16_1",
             "en",
