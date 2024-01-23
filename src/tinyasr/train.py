@@ -96,7 +96,7 @@ def warmup_then_cosine_decay(
 
 @click.command()
 @click.argument("config_path", type=click.Path(exists=True))
-@click.command("--edit", is_flag=True)
+@click.option("--edit", is_flag=True)
 def main(config_path: str, edit: bool):
     assert os.getenv("WANDB_API_KEY"), "Please set WANDB_API_KEY"
     assert os.getenv("HF_TOKEN"), "Please set HF_TOKEN"
