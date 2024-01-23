@@ -96,7 +96,8 @@ def warmup_then_cosine_decay(
 
 @click.command()
 @click.argument("config_path", type=click.Path(exists=True))
-def main(config_path: str):
+@click.command("--edit", is_flag=True)
+def main(config_path: str, edit: bool):
     assert os.getenv("WANDB_API_KEY"), "Please set WANDB_API_KEY"
     assert os.getenv("HF_TOKEN"), "Please set HF_TOKEN"
 
@@ -104,7 +105,10 @@ def main(config_path: str):
     device = "cuda"
 
     with open(config_path) as f:
-        config = Config(**yaml.safe_load(f))
+        s = f.read()
+        if edit:
+            s = click.edit(s)
+        config = Config(**yaml.safe_load(s))
 
     train_config = config.train
     model_config = config.model
