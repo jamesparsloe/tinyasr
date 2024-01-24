@@ -1,6 +1,6 @@
 train:
-  batch_size: 128
-  gradient_accumulation_steps: 4
+  batch_size: 256
+  gradient_accumulation_steps: 2
   compile: true
 
   val_every: 5000
