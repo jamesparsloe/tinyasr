@@ -39,6 +39,8 @@ class TinyASRConfig(BaseModel):
 
     tokenizer: str = "byte-level"  # or tinyasr.model
 
+    text_pretrain: bool = False
+
 
 class MHA(nn.Module):
     def __init__(self, *, d_model: int, n_heads: int, bias: bool, dropout: float):
@@ -220,23 +222,27 @@ class TinyASR(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, mels: Tensor, token_ids: Tensor):
-        B, C, T = mels.size()
+    def forward(self, *, token_ids: Tensor, mels: Tensor | None = None):
+        B = token_ids.size(0)
         target_ids = F.pad(token_ids[:, 1:], (0, 1), value=self.config.eos_token_id)
-
-        mels = self.encoder(mels)
-        prefix_len = mels.size(1)
-
-        # CFG
-        if self.config.p_uncond > 0.0:
-            uncond_mask = rearrange(
-                prob_mask_like((B,), self.config.p_uncond, device), "B -> B 1 1"
-            )
-            mels = torch.where(uncond_mask, self.null_cond, mels)
 
         tokens = self.embedding(token_ids)
 
-        x = torch.cat([mels, tokens], dim=1)
+        if self.config.text_pretrain:
+            x = tokens
+            prefix_len = 0
+        else:
+            mels = self.encoder(mels)
+            prefix_len = mels.size(1)
+
+            # CFG
+            if self.config.p_uncond > 0.0:
+                uncond_mask = rearrange(
+                    prob_mask_like((B,), self.config.p_uncond, device), "B -> B 1 1"
+                )
+                mels = torch.where(uncond_mask, self.null_cond, mels)
+
+            x = torch.cat([mels, tokens], dim=1)
 
         x = self.decoder(x)
 
@@ -308,6 +314,39 @@ class TinyASR(nn.Module):
             tokens = torch.cat((tokens, token), dim=1)
 
         return tokens
+
+    @torch.inference_mode()
+    def generate_unconditional(
+        self,
+        token_ids: Tensor,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+    ):
+        if top_k is not None:
+            assert top_k > 0
+            assert top_k <= self.config.n_tokens
+
+        device = next(self.parameters()).device
+
+        for _ in range(self.config.max_text_len):
+            x = self.embedding(token_ids)
+            x = self.decoder(x)
+            logits = self.lm_head(x[:, -1:])
+
+            if top_k is not None:
+                v, _ = torch.topk(logits, top_k)
+                logits[logits < v[:, [-1]]] = -float("inf")
+
+            logits = logits.squeeze(1)
+            logits[:, self.config.pad_token_id] = -float("inf")
+            logits[:, self.config.bos_token_id] = -float("inf")
+
+            probs = F.softmax(logits / temperature, dim=-1)
+
+            token = torch.multinomial(probs, num_samples=1)
+            token_ids = torch.cat((token_ids, token), dim=1)
+
+        return token_ids
 
 
 if __name__ == "__main__":

@@ -13,13 +13,15 @@ import yaml
 from datasets import load_dataset, interleave_datasets
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
-from torch.utils.data import DataLoader
-
+from torch.utils.data import DataLoader, IterableDataset
+from nltk.tokenize import sent_tokenize
 import wandb
+from torchdata.datapipes.iter import HuggingFaceDatasetsIterableDataset
 
 from .config import Config
 from .model import TinyASR, TinyASRConfig
 from .text import ByteLevelTokenizer, SentencePieceTokenizer
+from .utils import warmup_then_cosine_decay, cycle
 
 CACHE_DIR = os.path.expanduser("~/.cache/torchaudio")
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -74,26 +76,6 @@ def collate(
     }
 
 
-def cycle(iterable):
-    while True:
-        for item in iterable:
-            yield item
-
-
-def warmup_then_cosine_decay(
-    step: int, *, warmup_steps: int, steps: int, min_lr: float, max_lr: float
-):
-    if step < warmup_steps:
-        return min_lr + step * (max_lr - min_lr) / (warmup_steps)
-    elif step > steps:
-        return min_lr
-    else:
-        decay_ratio = (step - warmup_steps) / (steps - warmup_steps)
-        assert 0 <= decay_ratio <= 1
-        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
-        return min_lr + coeff * (max_lr - min_lr)
-
-
 @click.command()
 @click.argument("config_path", type=click.Path(exists=True))
 @click.option("--edit", is_flag=True)
@@ -113,11 +95,24 @@ def main(config_path: str, edit: bool):
     train_config = config.train
     model_config = config.model
 
+    assert not model_config.text_pretrain
+
     run = wandb.init(project=name, config=config.model_dump())
 
     run_dir = os.path.join("./runs", run.id)
     os.makedirs(run_dir, exist_ok=True)
 
+    if model_config.tokenizer == "byte-level":
+        tokenizer = ByteLevelTokenizer(
+            pad_token_id=model_config.pad_token_id,
+            bos_token_id=model_config.bos_token_id,
+            eos_token_id=model_config.eos_token_id,
+        )
+    else:
+        tokenizer = SentencePieceTokenizer(model_config.tokenizer)
+        model_config.n_tokens = tokenizer._model.vocab_size()
+
+    shuffle = True
     if train_config.dataset == "common_voice":
         train_ds = load_dataset(
             "mozilla-foundation/common_voice_16_1",
@@ -150,16 +145,6 @@ def main(config_path: str, edit: bool):
             stopping_strategy="all_exhausted",
         )
 
-    if model_config.tokenizer == "byte-level":
-        tokenizer = ByteLevelTokenizer(
-            pad_token_id=model_config.pad_token_id,
-            bos_token_id=model_config.bos_token_id,
-            eos_token_id=model_config.eos_token_id,
-        )
-    else:
-        tokenizer = SentencePieceTokenizer(model_config.tokenizer)
-        model_config.n_tokens = tokenizer._model.vocab_size()
-
     # TODO stream and filter the HF dataset on the fly instead of truncating
     collate_fn = partial(
         collate,
@@ -171,7 +156,7 @@ def main(config_path: str, edit: bool):
 
     train_dl = DataLoader(
         train_ds,
-        shuffle=True,
+        shuffle=shuffle,
         batch_size=train_config.batch_size,
         num_workers=train_config.num_workers,
         drop_last=True,
@@ -237,13 +222,13 @@ def main(config_path: str, edit: bool):
         for micro_step in range(train_config.gradient_accumulation_steps):
             batch = next(train_dl)
 
-            waveforms = batch["waveforms"].to(device, non_blocking=True)
             token_ids = batch["token_ids"].to(device, non_blocking=True)
 
+            waveforms = batch["waveforms"].to(device, non_blocking=True)
             mels = mel_transform(waveforms)
 
             with ctx:
-                out = model(mels, token_ids)
+                out = model(token_ids=token_ids, mels=mels)
 
             loss = out["loss"] / train_config.gradient_accumulation_steps
             loss.backward()
@@ -285,8 +270,9 @@ def main(config_path: str, edit: bool):
 
             for batch in islice(val_dl, train_config.val_steps):
                 texts = batch["texts"]
-                waveforms = batch["waveforms"].to(device, non_blocking=True)
                 token_ids = batch["token_ids"].to(device, non_blocking=True)
+
+                waveforms = batch["waveforms"].to(device, non_blocking=True)
                 mels = mel_transform(waveforms)
 
                 with ctx:
@@ -306,20 +292,22 @@ def main(config_path: str, edit: bool):
             with torch.no_grad():
                 for batch in val_dl:
                     texts = batch["texts"]
-                    waveforms = batch["waveforms"].to(device, non_blocking=True)
+
                     token_ids = batch["token_ids"].to(device, non_blocking=True)
+
+                    waveforms = batch["waveforms"].to(device, non_blocking=True)
                     mels = mel_transform(waveforms)
 
                     with ctx:
-                        out = model(mels, token_ids)
+                        out = model(token_ids=token_ids, mels=mels)
 
                     val_loss = val_loss + out["loss"]
 
                     val_batches += 1
 
-            val_loss = val_loss / val_batches
+                val_loss = val_loss / val_batches
 
-            wandb.log({"val/loss": val_loss.item()}, step=step)
+                wandb.log({"val/loss": val_loss.item()}, step=step)
 
             model.train()
 
