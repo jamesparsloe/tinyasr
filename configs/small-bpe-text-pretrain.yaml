@@ -1,0 +1,11 @@
+train:
+  batch_size: 128
+  gradient_accumulation_steps: 4
+  compile: true
+
+  val_every: 5000
+
+model:
+  tokenizer: tinyasr.model
+  dropout: 0.1
+  text_pretrain: true

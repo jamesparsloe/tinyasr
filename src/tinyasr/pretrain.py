@@ -219,15 +219,25 @@ def main(config_path: str, edit: bool):
                 "It was a bright cold day ",
                 "The river flows",
             ]:
-                prompt_token_ids = tokenizer.encode([prompt_text])
-                prompt_token_ids = prompt_token_ids.to(device, non_blocking=True)
+                # prompt_token_ids = tokenizer.encode([prompt_text])
+                prompt_token_ids = torch.tensor(
+                    [tokenizer._model.bos_id()] + tokenizer._model.encode(prompt_text),
+                    device=device,
+                )
+                prompt_token_ids = prompt_token_ids.unsqueeze(0)
 
                 with ctx:
                     generated_token_ids = model.generate_unconditional(prompt_token_ids)
 
-                generated_text = tokenizer.decode(generated_token_ids)
+                eos_mask = (generated_token_ids == tokenizer._model.eos_id()).float()
+                before_eos_mask = eos_mask.cumsum(dim=-1) == 0
+                length = before_eos_mask.sum(dim=-1).item()
 
-                data.append([prompt_text, generated_text[0]])
+                generated_text = tokenizer._model.decode(
+                    generated_token_ids[0, :length].cpu().tolist()
+                )
+
+                data.append([prompt_text, generated_text])
 
             eval_table = wandb.Table(columns=["prompt", "generated"], data=data)
             wandb.log({"eval": eval_table}, step=step)
