@@ -6,8 +6,8 @@ from .model import TinyASRConfig
 class TrainConfig(BaseModel):
     warmup_steps: int = 1_000
     steps: int = 100_000
-    min_lr: float = 1e-5
-    lr: float = 1e-4
+    min_lr: float = 3e-5
+    lr: float = 3e-4
 
     batch_size: int = 64
     gradient_accumulation_steps: int = 4
