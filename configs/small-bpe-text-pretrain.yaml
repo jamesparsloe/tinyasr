@@ -6,6 +6,9 @@ train:
   val_every: 5000
 
 model:
-  tokenizer: tinyasr.model
+  n_layers: 12
+  d_model: 768
+  n_heads: 12
   dropout: 0.1
+  tokenizer: tinyasr.model
   text_pretrain: true
