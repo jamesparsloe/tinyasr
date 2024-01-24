@@ -169,9 +169,8 @@ def main(config_path: str, edit: bool):
         for micro_step in range(train_config.gradient_accumulation_steps):
             batch = next(dl_iter)
 
-            print(batch["texts"])
-
             token_ids = batch["token_ids"].to(device, non_blocking=True)
+
             with ctx:
                 out = model(token_ids=token_ids)
 
