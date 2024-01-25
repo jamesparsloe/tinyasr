@@ -14,7 +14,7 @@ for prompt in [
     "Does this work? I",
     "Red ",
     "Once upon a time there ",
-    "The meaning of life is "
+    "The meaning of life is ",
 ]:
     with torch.inference_mode(), torch.amp.autocast(
         device_type="cuda", dtype=torch.bfloat16

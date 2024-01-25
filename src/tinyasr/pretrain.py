@@ -6,6 +6,7 @@ from functools import partial
 from itertools import islice
 
 import click
+import nltk
 import torch
 import torch.nn.functional as F
 import torchaudio
@@ -24,7 +25,7 @@ from torchdata.dataloader2.reading_service import (
 from torchdata.datapipes.iter import HuggingFaceHubReader
 
 import wandb
-import nltk
+
 from .config import Config
 from .model import TinyASR, TinyASRConfig
 from .text import ByteLevelTokenizer, SentencePieceTokenizer

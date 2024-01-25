@@ -29,7 +29,7 @@ class TrainConfig(BaseModel):
 
     dataset: str = "common_voice"
 
-    checkpoint: str | None = None # TODO checkpoint to restart training from
+    checkpoint: str | None = None  # TODO checkpoint to restart training from
 
     @property
     def val_steps(self) -> int:

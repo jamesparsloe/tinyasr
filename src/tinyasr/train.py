@@ -10,18 +10,19 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 import yaml
-from datasets import load_dataset, interleave_datasets
+from datasets import interleave_datasets, load_dataset
+from nltk.tokenize import sent_tokenize
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, IterableDataset
-from nltk.tokenize import sent_tokenize
-import wandb
 from torchdata.datapipes.iter import HuggingFaceDatasetsIterableDataset
+
+import wandb
 
 from .config import Config
 from .model import TinyASR, TinyASRConfig
 from .text import ByteLevelTokenizer, SentencePieceTokenizer
-from .utils import warmup_then_cosine_decay, cycle
+from .utils import cycle, warmup_then_cosine_decay
 
 CACHE_DIR = os.path.expanduser("~/.cache/torchaudio")
 os.makedirs(CACHE_DIR, exist_ok=True)
