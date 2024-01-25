@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
-
+from .utils import decompile_state_dict
 
 class TinyASRConfig(BaseModel):
     # audio
@@ -202,9 +202,7 @@ class TinyASR(nn.Module):
         checkpoint = torch.load(path, map_location="cpu")
         config = TinyASRConfig(**checkpoint["config"]["model"])
 
-        state_dict = {
-            k.replace("_orig_mod.", ""): v for k, v in checkpoint["model"].items()
-        }
+        state_dict = decompile_state_dict(checkpoint["model"])
 
         model = TinyASR(config)
         _ = model.load_state_dict(state_dict)

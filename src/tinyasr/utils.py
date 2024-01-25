@@ -30,3 +30,7 @@ def warmup_then_cosine_decay(
         assert 0 <= decay_ratio <= 1
         coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
         return min_lr + coeff * (max_lr - min_lr)
+
+
+def decompile_state_dict(state_dict):
+    return {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
