@@ -2,6 +2,7 @@ train:
   batch_size: 64
   gradient_accumulation_steps: 1
   compile: true
+  checkpoint: "./runs/lj70b56v/tinyasr-060000.pt"
 
 model:
   tokenizer: tinyasr.model

@@ -97,6 +97,19 @@ def main(config_path: str, edit: bool):
 
     assert not model_config.text_pretrain
 
+    model = TinyASR(model_config)
+
+    if train_config.checkpoint is not None:
+        # must be compatible with the model config from the yaml
+        checkpoint = torch.load(train_config.checkpoint, map_location="cpu")
+        _ = model.load_state_dict(checkpoint["model"])
+
+        print(
+            f"Warm starting (loading model state_dict) from {train_config.checkpoint}"
+        )
+
+    model = model.to(device)
+
     run = wandb.init(project=name, config=config.model_dump())
 
     run_dir = os.path.join("./runs", run.id)
@@ -171,8 +184,6 @@ def main(config_path: str, edit: bool):
         drop_last=True,
         collate_fn=collate_fn,
     )
-
-    model = TinyASR(model_config).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
