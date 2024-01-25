@@ -98,6 +98,16 @@ def main(config_path: str, edit: bool):
 
     assert not model_config.text_pretrain
 
+    if model_config.tokenizer == "byte-level":
+        tokenizer = ByteLevelTokenizer(
+            pad_token_id=model_config.pad_token_id,
+            bos_token_id=model_config.bos_token_id,
+            eos_token_id=model_config.eos_token_id,
+        )
+    else:
+        tokenizer = SentencePieceTokenizer(model_config.tokenizer)
+        model_config.n_tokens = tokenizer._model.vocab_size()
+
     model = TinyASR(model_config)
 
     if train_config.checkpoint is not None:
@@ -116,16 +126,6 @@ def main(config_path: str, edit: bool):
 
     run_dir = os.path.join("./runs", run.id)
     os.makedirs(run_dir, exist_ok=True)
-
-    if model_config.tokenizer == "byte-level":
-        tokenizer = ByteLevelTokenizer(
-            pad_token_id=model_config.pad_token_id,
-            bos_token_id=model_config.bos_token_id,
-            eos_token_id=model_config.eos_token_id,
-        )
-    else:
-        tokenizer = SentencePieceTokenizer(model_config.tokenizer)
-        model_config.n_tokens = tokenizer._model.vocab_size()
 
     shuffle = True
     if train_config.dataset == "common_voice":
