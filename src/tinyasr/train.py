@@ -103,7 +103,8 @@ def main(config_path: str, edit: bool):
     if train_config.checkpoint is not None:
         # must be compatible with the model config from the yaml
         checkpoint = torch.load(train_config.checkpoint, map_location="cpu")
-        _ = model.load_state_dict(checkpoint["model"])
+        state_dict = decompile_state_dict(checkpoint["model"])
+        _ = model.load_state_dict(state_dict)
 
         print(
             f"Warm starting (**just** loading model state_dict) from {train_config.checkpoint}"
