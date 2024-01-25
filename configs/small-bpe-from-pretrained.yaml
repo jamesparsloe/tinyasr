@@ -3,6 +3,8 @@ train:
   gradient_accumulation_steps: 1
   compile: true
   checkpoint: "./runs/lj70b56v/tinyasr-060000.pt" # small-bpe-text-pretrain.yaml
+  lr: 1e-4
+  min_lr: 1e-5
 
 model:
   n_layers: 12
