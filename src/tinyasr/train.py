@@ -15,7 +15,6 @@ from nltk.tokenize import sent_tokenize
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, IterableDataset
-from torchdata.datapipes.iter import HuggingFaceDatasetsIterableDataset
 
 import wandb
 
