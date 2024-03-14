@@ -4,13 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tinyasr"
-
-version = "0.1.0"
-
 description = "A tiny and hackable ASR system"
-
-requires-python = ">=3.10"
-
+requires-python = ">=3.11"
 dependencies = [
     "click",
     "einops",
@@ -27,6 +22,10 @@ dependencies = [
     "soundfile",
     "librosa",
 ]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = ["ipykernel"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -15,14 +15,19 @@ class TinyASRConfig(BaseModel):
     # audio
     sample_rate: int = 16_000
     max_duration: float = 15.0
-    n_mels: int = 128
+    n_mels: int = 80
+    kernel_size: int = 3
 
     # text
-    max_text_len: int = 128
-    pad_token_id: int = 0
-    bos_token_id: int = 1
-    eos_token_id: int = 2
-    n_tokens: int = 1 + 1 + 1 + 256
+    bos_token_id: int = 256
+    eos_token_id: int = 256 + 1
+    pad_token_id: int = 256 + 1 + 1
+    n_tokens: int = 256 + 1 + 1 + 1
+
+    pad_vocab_size_multiple: int = 8
+    tie_weights: bool = True
+
+    use_rotary_emb: bool = True
 
     # decoder
     n_layers: int = 6
@@ -33,8 +38,6 @@ class TinyASRConfig(BaseModel):
 
     amp_dtype: str = "bfloat16"
 
-    p_uncond: float = 0.0  # unconditional probability for CFG, 0.10 - 0.20 seems to be a good value
-
 
 class MHA(nn.Module):
     def __init__(self, *, d_model: int, n_heads: int, bias: bool, dropout: float):
@@ -44,16 +47,16 @@ class MHA(nn.Module):
         self.Wqkv = nn.Linear(d_model, 3 * d_model, bias=bias)
         self.out_proj = nn.Linear(d_model, d_model, bias=bias)
 
-    def forward(self, x: Tensor, rotary_emb: Tensor):
+    def forward(self, x: Tensor, rotary_emb: Tensor | None = None):
         qkv = self.Wqkv(x)
         qkv = rearrange(
-            qkv, "B T (three h d) -> B T three h d", three=3, h=self.n_heads
+            qkv, "B T (three h d) -> B three h T d", three=3, h=self.n_heads
         )
-        qkv = rearrange(qkv, "B T three h d -> B three h T d", three=3)
         q, k, v = qkv.unbind(dim=1)
 
-        q = apply_rotary_pos_emb(rotary_emb, q)
-        k = apply_rotary_pos_emb(rotary_emb, k)
+        if rotary_emb is not None:
+            q = apply_rotary_pos_emb(rotary_emb, q)
+            k = apply_rotary_pos_emb(rotary_emb, k)
 
         out = F.scaled_dot_product_attention(
             q, k, v, dropout_p=self.dropout, is_causal=True
@@ -81,8 +84,8 @@ class Block(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x: Tensor, rotary_emb: Tensor):
-        x = x + self.attn(self.attn_norm(x), rotary_emb)
+    def forward(self, x: Tensor, rotary_emb: Tensor | None = None):
+        x = x + self.attn(self.attn_norm(x), rotary_emb=rotary_emb)
         x = x + self.mlp(self.mlp_norm(x))
         return x
 
@@ -118,13 +121,23 @@ def apply_rotary_pos_emb(pos, t):
 
 class Decoder(nn.Module):
     def __init__(
-        self, *, d_model: int, n_layers: int, n_heads: int, dropout: float, bias: bool
+        self,
+        *,
+        d_model: int,
+        n_layers: int,
+        n_heads: int,
+        dropout: float,
+        bias: bool,
+        use_rotary_emb: bool,
     ):
         super().__init__()
 
         d_head = d_model // n_heads
 
-        self.rotary_emb = RotaryEmbedding(d_head)
+        self.use_rotary_emb = use_rotary_emb
+
+        if self.use_rotary_emb:
+            self.rotary_emb = RotaryEmbedding(d_head)
 
         self.blocks = nn.ModuleList(
             [
@@ -136,23 +149,20 @@ class Decoder(nn.Module):
 
     def forward(self, x: Tensor):
         B, T, d = x.size()
-        positions = torch.arange(T, device=x.device)
-        rotary_emb = self.rotary_emb(positions)
+        device = x.device
+
+        if self.use_rotary_emb:
+            pos_ids = torch.arange(T, device=device)
+            rotary_emb = self.rotary_emb(pos_ids)
+        else:
+            rotary_emb = None
 
         for block in self.blocks:
-            x = block(x, rotary_emb)
+            x = block(x, rotary_emb=rotary_emb)
+
         x = self.norm(x)
+
         return x
-
-
-# lucidrains
-def prob_mask_like(shape, prob: float, device):
-    if prob == 1:
-        return torch.ones(shape, device=device, dtype=torch.bool)
-    elif prob == 0:
-        return torch.zeros(shape, device=device, dtype=torch.bool)
-    else:
-        return torch.zeros(shape, device=device).float().uniform_(0, 1) < prob
 
 
 class TinyASR(nn.Module):
@@ -161,26 +171,49 @@ class TinyASR(nn.Module):
 
         self.config = config
 
+        kernel_size = config.kernel_size
+
         self.encoder = nn.Sequential(
-            nn.Conv1d(config.n_mels, config.d_model, 3, padding=1, stride=1),
+            nn.Conv1d(
+                config.n_mels,
+                config.d_model,
+                kernel_size,
+                padding=(kernel_size - 1) // 2,
+                stride=1,
+            ),
             nn.GELU(),
-            nn.Conv1d(config.d_model, config.d_model, 3, padding=1, stride=2),
+            nn.Conv1d(
+                config.d_model,
+                config.d_model,
+                kernel_size,
+                padding=(kernel_size - 1) // 2,
+                stride=2,
+            ),
             nn.GELU(),
             Rearrange("B d T -> B T d"),
             nn.LayerNorm(config.d_model),
         )
-        self.embedding = nn.Embedding(config.n_tokens, config.d_model)
+        vocab_size = config.n_tokens
+        if vocab_size % config.pad_vocab_size_multiple != 0:
+            vocab_size += (
+                config.pad_vocab_size_multiple
+                - vocab_size % config.pad_vocab_size_multiple
+            )
+
+        self.embedding = nn.Embedding(vocab_size, config.d_model)
         self.decoder = Decoder(
             d_model=config.d_model,
             n_layers=config.n_layers,
             n_heads=config.n_heads,
             dropout=config.dropout,
             bias=config.bias,
+            use_rotary_emb=config.use_rotary_emb,
         )
-        self.lm_head = nn.Linear(config.d_model, config.n_tokens)
 
-        if config.p_uncond > 0.0:
-            self.null_cond = nn.Parameter(config.d_model)
+        self.lm_head = nn.Linear(config.d_model, config.n_tokens, bias=config.bias)
+
+        if config.tie_weights:
+            self.lm_head.weight = self.embedding.weight
 
         self.apply(self._init_weights)
 
@@ -192,35 +225,33 @@ class TinyASR(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, mels: Tensor, token_ids: Tensor):
+    def forward(
+        self, mels: Tensor, input_ids: Tensor, target_ids: Tensor | None = None
+    ):
         B, C, T = mels.size()
-        target_ids = F.pad(token_ids[:, 1:], (0, 1), value=self.config.eos_token_id)
 
-        mels = self.encoder(mels)
-        prefix_len = mels.size(1)
+        audio_features = self.encoder(mels)
+        prefix_len = audio_features.size(1)
 
-        # CFG
-        if self.config.p_uncond > 0.0:
-            uncond_mask = rearrange(
-                prob_mask_like((B,), self.config.p_uncond, device), "B -> B 1 1"
-            )
-            mels = torch.where(uncond_mask, self.null_cond, mels)
+        emb = self.embedding(input_ids)
+        emb = torch.cat((audio_features, emb), dim=1)
 
-        tokens = self.embedding(token_ids)
-
-        x = torch.cat([mels, tokens], dim=1)
-
-        x = self.decoder(x)
+        x = self.decoder(emb)
 
         logits = self.lm_head(x[:, prefix_len:])
 
-        loss = F.cross_entropy(
-            logits.view(-1, logits.size(-1)),
-            target_ids.view(-1),
-            ignore_index=self.config.pad_token_id,
-        )
+        if target_ids is not None:
+            loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)),
+                target_ids.view(-1),
+                ignore_index=self.config.pad_token_id,
+            )
 
-        return {"loss": loss}
+            return {"loss": loss}
+        else:
+            return {
+                "logits": logits,
+            }
 
     def configure_optimizers(
         self, *, weight_decay: float, lr: float, betas: tuple[float, float]

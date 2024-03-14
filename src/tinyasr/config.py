@@ -10,7 +10,11 @@ class TrainConfig(BaseModel):
     lr: float = 1e-4
 
     batch_size: int = 64
-    gradient_accumulation_steps: int = 4
+    micro_batch_size: int = 64
+
+    @property
+    def gradient_accumulation_steps(self) -> int:
+        return self.batch_size // self.micro_batch_size
 
     weight_decay: float = 0.1
     max_norm: float = 1.0
