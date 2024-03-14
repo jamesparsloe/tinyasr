@@ -1,10 +1,10 @@
 import functools
+import re
 
 import torch
 from datasets import Audio, interleave_datasets, load_dataset
-from torchdata.datapipes.iter import IterableWrapper, SampleMultiplexer
-import re
 from torchaudio.functional import resample
+from torchdata.datapipes.iter import IterableWrapper, SampleMultiplexer
 
 CONFIGS = {
     "train": [
