@@ -51,9 +51,9 @@ def collate(
     token_ids = tokenize(texts)
 
     return {
-        "waveforms": waveforms,
-        "token_ids": token_ids,
         "texts": texts,
+        "token_ids": token_ids,
+        "waveforms": waveforms,
     }
 
 
@@ -105,10 +105,12 @@ def main(config_path: str):
         max_duration=model_config.max_duration,
     )
 
+    shuffle_buffer_size = train_config.shuffle_buffer_size
+
     train_dp = (
         build_dp(split="train", max_duration=model_config.max_duration)
         .cycle()
-        .shuffle(buffer_size=1000)
+        .shuffle(buffer_size=shuffle_buffer_size)
         .batch(train_config.micro_batch_size, drop_last=True)
         .collate(collate_fn)
     )
@@ -120,10 +122,9 @@ def main(config_path: str):
         .collate(collate_fn)
     )
 
-    num_workers = (os.cpu_count() - 1) // 2
+    num_workers = min(train_config.num_workers, os.cpu_count() - 1)
 
-    # rs = MultiProcessingReadingService(num_workers=num_workers)
-    rs = None
+    rs = MultiProcessingReadingService(num_workers=num_workers)
     train_dl = DataLoader2(train_dp, reading_service=rs)
     train_dl_iter = iter(train_dl)
     val_dl = DataLoader2(val_dp, reading_service=rs)

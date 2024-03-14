@@ -5,11 +5,13 @@ from tinyasr.model import TinyASR, TinyASRConfig
 import torch.nn.functional as F
 from tinyasr.text import tokenize, detokenize
 from contextlib import nullcontext
+from tinyasr.audio import WhisperMelSpectrogram
 
 device = "cuda"
 
 
-checkpoint_path = "./runs/7srpf3at/tinyasr-100000.pt"
+# checkpoint_path = "./runs/7srpf3at/tinyasr-100000.pt"
+checkpoint_path = "./runs/fnd09kds/tinyasr-050000.pt"
 checkpoint = torch.load(checkpoint_path, map_location="cpu")
 config = TinyASRConfig(**checkpoint["config"])
 model = TinyASR(config)
@@ -17,7 +19,7 @@ state_dict = {k.replace("_orig_mod.", ""): v for k, v in checkpoint["model"].ite
 model.load_state_dict(state_dict)
 model = model.to(device).eval()
 
-mel_transform = torchaudio.transforms.MelSpectrogram().to(device)
+mel_transform = WhisperMelSpectrogram().to(device)
 
 
 def transcribe(path: str, temperature: float):

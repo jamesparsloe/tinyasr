@@ -17,12 +17,14 @@ class TinyASRConfig(BaseModel):
     max_duration: float = 15.0
     n_mels: int = 80
     kernel_size: int = 3
+    hop_length: int = 160
 
     # text
     bos_token_id: int = 256
     eos_token_id: int = 256 + 1
     pad_token_id: int = 256 + 1 + 1
     n_tokens: int = 256 + 1 + 1 + 1
+    text_max_seqlen: int = 512
 
     pad_vocab_size_multiple: int = 8
     tie_weights: bool = True
@@ -193,6 +195,7 @@ class TinyASR(nn.Module):
             Rearrange("B d T -> B T d"),
             nn.LayerNorm(config.d_model),
         )
+
         vocab_size = config.n_tokens
         if vocab_size % config.pad_vocab_size_multiple != 0:
             vocab_size += (
@@ -200,7 +203,17 @@ class TinyASR(nn.Module):
                 - vocab_size % config.pad_vocab_size_multiple
             )
 
-        self.embedding = nn.Embedding(vocab_size, config.d_model)
+        self.emb = nn.Embedding(vocab_size, config.d_model)
+
+        if not config.use_rotary_emb:
+            compression = 2
+            audio_max_seqlen = (
+                config.max_duration * config.sample_rate // config.hop_length
+            ) // compression
+            self.audio_pos_emb = nn.Embedding(audio_max_seqlen, config.d_model)
+
+            self.pos_emb = nn.Embedding(config.text_max_seqlen, config.d_model)
+
         self.decoder = Decoder(
             d_model=config.d_model,
             n_layers=config.n_layers,
@@ -213,7 +226,7 @@ class TinyASR(nn.Module):
         self.lm_head = nn.Linear(config.d_model, config.n_tokens, bias=config.bias)
 
         if config.tie_weights:
-            self.lm_head.weight = self.embedding.weight
+            self.lm_head.weight = self.emb.weight
 
         self.apply(self._init_weights)
 
@@ -229,16 +242,26 @@ class TinyASR(nn.Module):
         self, mels: Tensor, input_ids: Tensor, target_ids: Tensor | None = None
     ):
         B, C, T = mels.size()
+        text_len = input_ids.size(-1)
+        device = mels.device
 
         audio_features = self.encoder(mels)
-        prefix_len = audio_features.size(1)
+        audio_len = audio_features.size(1)
 
-        emb = self.embedding(input_ids)
+        emb = self.emb(input_ids)
+
+        if not self.config.use_rotary_emb:
+            text_pos_ids = torch.arange(text_len, device=device)
+            audio_pos_ids = torch.arange(audio_len, device=device)
+
+            audio_features = audio_features + self.audio_pos_emb(audio_pos_ids)
+            emb = emb + self.pos_emb(text_pos_ids)
+
         emb = torch.cat((audio_features, emb), dim=1)
 
         x = self.decoder(emb)
 
-        logits = self.lm_head(x[:, prefix_len:])
+        logits = self.lm_head(x[:, audio_len:])
 
         if target_ids is not None:
             loss = F.cross_entropy(
@@ -292,8 +315,8 @@ class TinyASR(nn.Module):
             (B, 1), self.config.bos_token_id, dtype=torch.int64, device=device
         )
 
-        for _ in range(self.config.max_text_len):
-            x = torch.cat([mels, self.embedding(tokens)], dim=1)
+        for _ in range(self.config.text_max_seqlen):
+            x = torch.cat([mels, self.emb(tokens)], dim=1)
             x = self.decoder(x)
             logits = self.lm_head(x[:, -1:])
 

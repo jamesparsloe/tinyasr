@@ -4,10 +4,10 @@ from .model import TinyASRConfig
 
 
 class TrainConfig(BaseModel):
-    warmup_steps: int = 1_000
+    warmup_steps: int = 1000
     steps: int = 100_000
-    min_lr: float = 1e-5
-    lr: float = 1e-4
+    min_lr: float = 5e-5
+    lr: float = 5e-4
 
     batch_size: int = 64
     micro_batch_size: int = 64
@@ -28,6 +28,8 @@ class TrainConfig(BaseModel):
 
     num_workers: int = 4
     seed: int = 42
+
+    shuffle_buffer_size: int = 256
 
     compile: bool = False
 
